@@ -1,0 +1,2 @@
+spring-boot-app filter=lfs diff=lfs merge=lfs -text
+spring-boot-app-manifests filter=lfs diff=lfs merge=lfs -text
