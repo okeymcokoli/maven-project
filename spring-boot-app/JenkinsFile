@@ -2,7 +2,7 @@ pipeline {
     agent any
     environment {
         // Ensure Docker is in the PATH
-        PATH = "/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin:$PATH"
+        PATH = "/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin"
         
         // Docker-related environment variables
         DOCKER_IMAGE = "okeymcokoli/todo:${BUILD_NUMBER}"
@@ -12,9 +12,8 @@ pipeline {
 
         // SonarQube configuration
         SONAR_URL = "http://localhost:9000"
-        SONAR_PROJECT_KEY = "maven-project" // Add your actual SonarQube project key here to ensure successful integration
+        SONAR_PROJECT_KEY = "maven-project" // Add your actual SonarQube project key here
     }
-
     stages {
         stage('Checkout') {
             steps {
@@ -45,7 +44,6 @@ pipeline {
         stage('Build and Push Docker Image') {
             environment {
                 DOCKER_IMAGE = "okeymcokoli/maven-app:${BUILD_NUMBER}"
-                // DOCKERFILE_LOCATION = "java-maven-sonar-argocd-helm-k8s/spring-boot-app/Dockerfile"
                 REGISTRY_CREDENTIALS = credentials('docker-cred')
             }
             steps {
