@@ -102,7 +102,7 @@ pipeline {
                                 git commit -m "${commitMessage}"
                             """
                             
-                            // Push changes to GitHub
+                            // Push changes to GitHub with [ci skip] to avoid triggering another Jenkins build
                             sh """
                                 git push https://${GITHUB_TOKEN}@github.com/okeymcokoli/maven-project HEAD:main
                             """
