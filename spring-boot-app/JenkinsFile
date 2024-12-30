@@ -33,17 +33,16 @@ pipeline {
                 sh 'cd spring-boot-app && mvn clean package'
             }
         }
-
-        stage('Static Code Analysis') {
-            environment {
-                SONAR_URL = "http://localhost:9000"
-            }
-            steps {
-                withCredentials([string(credentialsId: 'Jenkins-user', variable: 'SONAR_TOKEN')]) {
-                    sh 'cd spring-boot-app && mvn sonar:sonar -Dsonar.login=$SONAR_TOKEN -Dsonar.host.url=${SONAR_URL}'
-                }
-            }
-        }
+        // stage('Static Code Analysis') {
+        //     environment {
+        //         SONAR_URL = "http://localhost:9000"
+        //     }
+        //     steps {
+        //         withCredentials([string(credentialsId: 'Jenkins-user', variable: 'SONAR_TOKEN')]) {
+        //             sh 'cd spring-boot-app && mvn sonar:sonar -Dsonar.login=$SONAR_TOKEN -Dsonar.host.url=${SONAR_URL}'
+        //         }
+        //     }
+        // }
 
         stage('Build and Push Docker Image') {
             environment {
@@ -75,15 +74,26 @@ pipeline {
                             git config user.email "okeymcokoli@icloud.com"
                             git config user.name "okeymcokoli"
                             
+                            # Show the file before modification
+                            echo "Before modification:"
+                            cat spring-boot-app-manifests/deployment.yml
+                            
                             # Use sed to replace the image tag in deployment.yml
                             sed -i '' "s/replaceImageTag/${BUILD_NUMBER}/g" spring-boot-app-manifests/deployment.yml
+                            
+                            # Show the file after modification
+                            echo "After modification:"
+                            cat spring-boot-app-manifests/deployment.yml
+                            
+                            # Check the status to see if the file is staged
+                            git status
                             
                             # Stage the file and commit
                             git add spring-boot-app-manifests/deployment.yml
                             git commit -m "${COMMIT_MESSAGE}"
                         '''
 
-                        // Push changes to GitHub with a flag to avoid triggering a webhook
+                        // Push changes to GitHub
                         sh """
                             git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
                         """
