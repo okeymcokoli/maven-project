@@ -55,25 +55,39 @@ pipeline {
       }
     }
     stage('Update Deployment File') {
-        environment {
-            GIT_REPO_NAME = "maven-project"
-            GIT_USER_NAME = "okeymcokoli"
-        }
-        steps {
-            withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
+    environment {
+        GIT_REPO_NAME = "maven-project"
+        GIT_USER_NAME = "okeymcokoli"
+    }
+    steps {
+        withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
+            script {
+                def commitMessage = "Update deployment image to version ${BUILD_NUMBER}"
+                
+                // Configure Git user for committing changes
                 sh '''
                     git config user.email "okeymcokoli@icloud.com"
                     git config user.name "okeymcokoli"
-                    BUILD_NUMBER=${BUILD_NUMBER}
+                    
+                    # Use sed to replace the image tag in deployment.yml
                     sed -i '' "s/replaceImageTag/${BUILD_NUMBER}/g" spring-boot-app-manifests/deployment.yml
+                    
+                    # Stage the file and commit
                     git add spring-boot-app-manifests/deployment.yml
-                    git commit -m "Update deployment image to version ${BUILD_NUMBER}"
-                    git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
+                    git commit -m "${commitMessage}"
                 '''
+
+                // Push changes to GitHub with a flag to avoid triggering a webhook
+                if (commitMessage != "[ci skip]") {
+                    sh """
+                        git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
+                    """
+                } else {
+                    echo "Skipping push to GitHub due to '[ci skip]' flag."
+                }
             }
         }
     }
-  }
 }
 
 
