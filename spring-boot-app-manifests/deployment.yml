@@ -16,6 +16,6 @@ spec:
     spec:
       containers:
       - name: mvn-app
-        image: okeymcokoli/maven-app:12
+        image: okeymcokoli/maven-app:10
         ports:
         - containerPort: 8080
