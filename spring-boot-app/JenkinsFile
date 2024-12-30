@@ -1,68 +1,128 @@
 pipeline {
-  agent {
-    docker {
-      image 'okeymcokoli/maven-app:v1'
-      args '--user root -v /var/run/docker.sock:/var/run/docker.sock' // mount Docker socket to access the host's Docker daemon
-    }
-  }
-  stages {
-    stage('Checkout') {
-      steps {
-        sh 'echo passed'
-        git branch: 'main', url: 'https://github.com/okeymcokoli/maven-project.git'
-      }
-    }
-    stage('Build and Test') {
-      steps {
-        sh 'ls -ltr'
-        // build the project and create a JAR file
-        sh 'cd java-maven-sonar-argocd-helm-k8s/spring-boot-app && mvn clean package'
-      }
-    }
-    stage('Static Code Analysis') {
-      environment {
-        SONAR_URL = "http://localhost:9000"
-      }
-      steps {
-        withCredentials([string(credentialsId: 'sonarqube', variable: 'SONAR_TOKEN')]) {
-          sh 'cd java-maven-sonar-argocd-helm-k8s/spring-boot-app && mvn sonar:sonar -Dsonar.login=$SONAR_TOKEN -Dsonar.host.url=${SONAR_URL}'
-        }
-      }
-    }
-    stage('Build and Push Docker Image') {
-      environment {
-        DOCKER_IMAGE = "okeymcokoli/maven-app:${BUILD_NUMBER}"
-        // DOCKERFILE_LOCATION = "java-maven-sonar-argocd-helm-k8s/spring-boot-app/Dockerfile"
+    agent any
+    environment {
+        // Ensure Docker is in the PATH
+        PATH = "/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin:$PATH"
+        
+        // Docker-related environment variables
+        DOCKER_IMAGE = "okeymcokoli/todo:${BUILD_NUMBER}"
+        IMAGE_TAG = "${BUILD_NUMBER}"
+        DOCKER_REGISTRY = "index.docker.io"
         REGISTRY_CREDENTIALS = credentials('docker-cred')
-      }
-      steps {
-        script {
-            sh 'cd java-maven-sonar-argocd-helm-k8s/spring-boot-app && docker build -t ${DOCKER_IMAGE} .'
-            def dockerImage = docker.image("${DOCKER_IMAGE}")
-            docker.withRegistry('https://index.docker.io/v1/', "docker-cred") {
-                dockerImage.push()
+
+        // SonarQube configuration
+        SONAR_URL = "http://localhost:9000"
+        SONAR_PROJECT_KEY = "todo-app" // Add your actual SonarQube project key here
+    }
+    stages {
+        stage('Docker Login') {
+            steps {
+                script {
+                    withCredentials([usernamePassword(credentialsId: 'docker-cred', usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
+                        sh """
+                            echo \$DOCKER_PASSWORD | docker login -u \$DOCKER_USERNAME --password-stdin
+                        """
+                    }
+                }
             }
         }
-      }
-    }
-    stage('Update Deployment File') {
-        environment {
-            GIT_REPO_NAME = "maven-project"
-            GIT_USER_NAME = "okeymcokoli"
+
+        stage('Checkout') {
+            steps {
+                git credentialsId: 'github', 
+                    url: 'https://github.com/okeymcokoli/todo-app-via-cicd.git',
+                    branch: 'main'
+            }
         }
-        steps {
-            withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
-                sh '''
-                    git config user.email "okeymcokoli@icloud.com"
-                    git config user.name "okeymcokoli"
-                    BUILD_NUMBER=${BUILD_NUMBER}
-                    sed -i "s/replaceImageTag/${BUILD_NUMBER}/g" java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
-                    git add java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests/deployment.yml
-                    git commit -m "Update deployment image to version ${BUILD_NUMBER}"
-                    git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
-                '''
+
+        stage('Static Code Analysis') {
+            steps {
+                withCredentials([string(credentialsId: 'Jenkins-user', variable: 'SONAR_TOKEN')]) {
+                    sh """
+                        sonar-scanner -Dsonar.login=\$SONAR_TOKEN \
+                                      -Dsonar.host.url=${SONAR_URL} \
+                                      -Dsonar.projectKey=${SONAR_PROJECT_KEY}
+                    """
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    echo "Building Docker image"
+                    sh '''
+                        docker build -t okeymcokoli/todo:${BUILD_NUMBER} .
+                    '''
+                }
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    echo "Pushing Docker image to registry"
+                    sh '''
+                        docker push okeymcokoli/todo:${BUILD_NUMBER}
+                    '''
+                }
+            }
+        }
+
+        stage('Checkout K8S manifest SCM') {
+            steps {
+                git credentialsId: 'github', 
+                    url: 'https://github.com/okeymcokoli/todo-app-manifests.git',
+                    branch: 'main'
+            }
+        }
+
+        stage('Update K8S manifests & push to Repo') {
+            steps {
+                script {
+                    withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
+                        sh '''
+                            # Navigate to the manifests directory
+                            cd manifests
+
+                            # Output the current state of the YAML files for verification
+                            echo "Current state of deploy.yaml:"
+                            cat deploy.yaml
+
+                            echo "Current state of service.yaml:"
+                            cat service.yaml
+
+                            echo "Current state of ingress.yaml:"
+                            cat ingress.yaml
+
+                            # Update the image version (tag) in the deploy.yaml
+                            sed -i '' "s|okeymcokoli/todo:.*|okeymcokoli/todo:${BUILD_NUMBER}|g" deploy.yaml
+
+                            # Optionally, update other parts of the YAMLs (if needed) like services.yaml and ingress.yaml
+                            sed -i '' "s|okeymcokoli/todo:.*|okeymcokoli/todo:${BUILD_NUMBER}|g" service.yaml
+                            sed -i '' "s|okeymcokoli/todo:.*|okeymcokoli/todo:${BUILD_NUMBER}|g" ingress.yaml
+
+                            # Output the updated files to verify changes
+                            echo "Updated deploy.yaml:"
+                            cat deploy.yaml
+
+                            echo "Updated service.yaml:"
+                            cat service.yaml
+
+                            echo "Updated ingress.yaml:"
+                            cat ingress.yaml
+
+                            # Commit and push changes to the manifests repository
+                            git add deploy.yaml service.yaml ingress.yaml
+                            git commit -m 'Updated Kubernetes manifests with build number | Jenkins Pipeline'
+                            
+                            # Check the current remotes and push the changes
+                            git remote -v
+                            git push https://github.com/okeymcokoli/todo-app-manifests.git HEAD:main
+                        '''
+                    }
+                }
             }
         }
     }
-  }
 }
