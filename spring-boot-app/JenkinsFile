@@ -78,9 +78,10 @@ pipeline {
                             echo "Before modification:"
                             cat spring-boot-app-manifests/deployment.yml
                             
-                            # Use sed to replace the image tag in deployment.yml
-                            sed -i '' "s/replaceImageTag/${BUILD_NUMBER}/g" spring-boot-app-manifests/deployment.yml
-                            
+                            // # Use sed to replace the image tag in deployment.yml
+                            // sed -i '' "s/replaceImageTag/${BUILD_NUMBER}/g" spring-boot-app-manifests/deployment.yml
+                            # Replace the image tag directly (assuming it's in the form of okeymcokoli/maven-app:6)
+                            sed -i '' "s/okeymcokoli\/maven-app:[0-9]\+/okeymcokoli\/maven-app:${BUILD_NUMBER}/g" spring-boot-app-manifests/deployment.yml
                             # Show the file after modification
                             echo "After modification:"
                             cat spring-boot-app-manifests/deployment.yml
