@@ -1,30 +1,34 @@
 pipeline {
     agent any
+
     environment {
         // Ensure Docker is in the PATH
-        PATH = "/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin"
+        PATH = "/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin" // Path doesn't need resetting unless really necessary
         
         // Docker-related environment variables
-        DOCKER_IMAGE = "okeymcokoli/todo:${BUILD_NUMBER}"
+        DOCKER_IMAGE = "okeymcokoli/maven-app:${BUILD_NUMBER}"
         IMAGE_TAG = "${BUILD_NUMBER}"
         DOCKER_REGISTRY = "index.docker.io"
         REGISTRY_CREDENTIALS = credentials('docker-cred')
 
         // SonarQube configuration
         SONAR_URL = "http://localhost:9000"
-        SONAR_PROJECT_KEY = "maven-project" // Add your actual SonarQube project key here
+        SONAR_PROJECT_KEY = "maven-project" // Update with your actual SonarQube project key
     }
+
     stages {
         stage('Checkout') {
             steps {
-                sh 'echo passed'
+                sh 'echo "Checking out the repository"'
                 git branch: 'main', url: 'https://github.com/okeymcokoli/maven-project.git'
             }
         }
 
         stage('Build and Test') {
             steps {
+                sh 'echo "Listing files in the repo"'
                 sh 'ls -ltr'
+                
                 // Build the project and create a JAR file
                 sh 'cd spring-boot-app && mvn clean package'
             }
@@ -61,12 +65,11 @@ pipeline {
             environment {
                 GIT_REPO_NAME = "maven-project"
                 GIT_USER_NAME = "okeymcokoli"
+                COMMIT_MESSAGE = "Update deployment image to version ${BUILD_NUMBER}"
             }
             steps {
                 withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
                     script {
-                        def commitMessage = "Update deployment image to version ${BUILD_NUMBER}"
-                        
                         // Configure Git user for committing changes
                         sh '''
                             git config user.email "okeymcokoli@icloud.com"
@@ -77,17 +80,13 @@ pipeline {
                             
                             # Stage the file and commit
                             git add spring-boot-app-manifests/deployment.yml
-                            git commit -m "${commitMessage}"
+                            git commit -m "${COMMIT_MESSAGE}"
                         '''
 
                         // Push changes to GitHub with a flag to avoid triggering a webhook
-                        if (commitMessage != "[ci skip]") {
-                            sh """
-                                git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
-                            """
-                        } else {
-                            echo "Skipping push to GitHub due to '[ci skip]' flag."
-                        }
+                        sh """
+                            git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
+                        """
                     }
                 }
             }
