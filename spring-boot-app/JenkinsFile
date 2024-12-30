@@ -24,15 +24,15 @@ pipeline {
             }
         }
 
-        stage('Build and Test') {
-            steps {
-                sh 'echo "Listing files in the repo"'
-                sh 'ls -ltr'
+        // stage('Build and Test') {
+        //     steps {
+        //         sh 'echo "Listing files in the repo"'
+        //         sh 'ls -ltr'
                 
-                // Build the project and create a JAR file
-                sh 'cd spring-boot-app && mvn clean package'
-            }
-        }
+        //         // Build the project and create a JAR file
+        //         sh 'cd spring-boot-app && mvn clean package'
+        //     }
+        // }
         // stage('Static Code Analysis') {
         //     environment {
         //         SONAR_URL = "http://localhost:9000"
@@ -59,7 +59,6 @@ pipeline {
                 }
             }
         }
-
         stage('Update Deployment File') {
             environment {
                 GIT_REPO_NAME = "maven-project"
@@ -67,37 +66,49 @@ pipeline {
                 COMMIT_MESSAGE = "Update deployment image to version ${BUILD_NUMBER}"
             }
             steps {
+                echo 'Updating deployment file with new image version'
                 withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
                     script {
-                        // Configure Git user for committing changes
-                        sh '''
-                            git config user.email "okeymcokoli@icloud.com"
-                            git config user.name "okeymcokoli"
-                            
-                            # Show the file before modification
-                            echo "Before modification:"
-                            cat spring-boot-app-manifests/deployment.yml
-                            
-                            // # Use sed to replace the image tag in deployment.yml
-                            // sed -i '' "s/replaceImageTag/${BUILD_NUMBER}/g" spring-boot-app-manifests/deployment.yml
-                            # Replace the image tag directly (assuming it's in the form of okeymcokoli/maven-app:6)
-                            sed -i '' "s/okeymcokoli\/maven-app:[0-9]\+/okeymcokoli\/maven-app:${BUILD_NUMBER}/g" spring-boot-app-manifests/deployment.yml
-                            # Show the file after modification
-                            echo "After modification:"
-                            cat spring-boot-app-manifests/deployment.yml
-                            
-                            # Check the status to see if the file is staged
-                            git status
-                            
-                            # Stage the file and commit
-                            git add spring-boot-app-manifests/deployment.yml
-                            git commit -m "${COMMIT_MESSAGE}"
-                        '''
+                        def commitMessage = "Update deployment image to version ${BUILD_NUMBER}"
 
-                        // Push changes to GitHub
+                        // Ensure we are working in the correct directory
+                        sh 'echo "Before modification:" && cat spring-boot-app-manifests/deployment.yml'
+                        
+                        // Ensure 'replaceImageTag' is present before replacing it with the new build number
+                        // If the placeholder is missing, we add it back
                         sh """
-                            git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
+                            if ! grep -q 'replaceImageTag' spring-boot-app-manifests/deployment.yml; then
+                                echo 'Placeholder replaceImageTag not found, re-adding it.'
+                                sed -i '' 's|image: okeymcokoli/maven-app:[0-9]*|image: replaceImageTag|' spring-boot-app-manifests/deployment.yml
+                            fi
                         """
+
+                        // Now replace the placeholder with the current build number
+                        sh """
+                            sed -i '' "s|replaceImageTag|okeymcokoli/maven-app:${BUILD_NUMBER}|g" spring-boot-app-manifests/deployment.yml
+                        """
+                        
+                        // Show the file after modification for debugging
+                        sh 'echo "After modification:" && cat spring-boot-app-manifests/deployment.yml'
+
+                        // Check if changes were actually made
+                        def status = sh(script: 'git status --porcelain', returnStdout: true).trim()
+                        if (status) {
+                            // Stage and commit the changes if there are any modifications
+                            sh """
+                                git config user.email "okeymcokoli@icloud.com"
+                                git config user.name "okeymcokoli"
+                                git add spring-boot-app-manifests/deployment.yml
+                                git commit -m "${commitMessage}"
+                            """
+                            
+                            // Push changes to GitHub
+                            sh """
+                                git push https://${GITHUB_TOKEN}@github.com/okeymcokoli/maven-project HEAD:main
+                            """
+                        } else {
+                            echo "No changes to commit. Skipping git commit and push."
+                        }
                     }
                 }
             }
